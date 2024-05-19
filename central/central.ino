@@ -18,6 +18,7 @@ void setup() {
 
   // start scanning for peripherals
   BLE.scanForUuid("19b10000-e8f2-537e-4f6c-d104768a1214");
+  BLE.scanForUuid("5a005939-6dad-4166-9531-2d8d363a462c");
 }
 
 void loop() {
@@ -34,7 +35,7 @@ void loop() {
     Serial.print(peripheral.advertisedServiceUuid());
     Serial.println();
 
-    if (peripheral.localName() != "LED") {
+    if (peripheral.localName() != "Peripheral") {
       return;
     }
 
@@ -45,6 +46,7 @@ void loop() {
 
     // peripheral disconnected, start scanning again
     BLE.scanForUuid("19b10000-e8f2-537e-4f6c-d104768a1214");
+    BLE.scanForUuid("5a005939-6dad-4166-9531-2d8d363a462c");
   }
 }
 
@@ -71,6 +73,8 @@ void controlLed(BLEDevice peripheral) {
 
   // retrieve the LED characteristic
   BLECharacteristic ledCharacteristic = peripheral.characteristic("19b10001-e8f2-537e-4f6c-d104768a1214");
+  BLECharacteristic temperatureCharacteristic = peripheral.characteristic("91a0b53d-0624-4b15-b388-59afcf03f233");
+  BLECharacteristic humidityCharacteristic = peripheral.characteristic("89c028a0-d1bf-4f8f-97d6-3fa8c77fdcf7");
 
   if (!ledCharacteristic) {
     Serial.println("Peripheral does not have LED characteristic!");
@@ -82,6 +86,18 @@ void controlLed(BLEDevice peripheral) {
     return;
   }
 
+  if (!temperatureCharacteristic) {
+    Serial.println("Peripheral does not have LED characteristic!");
+    peripheral.disconnect();
+    return;
+  } 
+
+  if (!humidityCharacteristic) {
+    Serial.println("Peripheral does not have LED characteristic!");
+    peripheral.disconnect();
+    return;
+  } 
+
   while (peripheral.connected()) {
     // while the peripheral is connected
 
@@ -92,17 +108,27 @@ void controlLed(BLEDevice peripheral) {
       // button changed
       oldButtonState = buttonState;
       if (buttonState) {
-        Serial.println("button pressed");
-
         // button is pressed, write 0x01 to turn the LED on
         ledCharacteristic.writeValue((byte)0x01);
+        if(temperatureCharacteristic.canRead()){
+          Serial.print("Temperature: ");
+          byte temp;
+          temperatureCharacteristic.readValue(temp);
+          Serial.println(temp);
+        }
+        if(humidityCharacteristic.canRead()){
+          Serial.print("Humidity: ");
+          byte hum;
+          humidityCharacteristic.readValue(hum);
+          Serial.println(hum);
+        }
       } else {
-        Serial.println("button released");
-
         // button is released, write 0x00 to turn the LED off
         ledCharacteristic.writeValue((byte)0x00);
       }
     }
+    
+      
   }
 
   Serial.println("Peripheral disconnected");
