@@ -1,8 +1,13 @@
 #include <ArduinoBLE.h>
+#include <Arduino_HTS221.h>
 
-BLEService newService("180A");  // creating the service
-BLEUnsignedCharCharacteristic randomReading("2A58", BLERead | BLENotify);  // Analog Value characteristic
-BLEByteCharacteristic switchChar("2A57", BLERead | BLEWrite);  // LED characteristic
+BLEService ledService("19B10000-E8F2-537E-4F6C-D104768A1214"); // Bluetooth® Low Energy LED Service
+BLEService sensorService("5a005939-6dad-4166-9531-2d8d363a462c");
+
+// Bluetooth® Low Energy LED Switch Characteristic - custom 128-bit UUID, read and writable by central
+BLEByteCharacteristic switchCharacteristic("19B10001-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite);
+BLEByteCharacteristic temperatureCharacteristic("91a0b53d-0624-4b15-b388-59afcf03f233", BLERead);
+BLEByteCharacteristic humidityCharacteristic("89c028a0-d1bf-4f8f-97d6-3fa8c77fdcf7", BLERead);
 
 const int ledPin = LED_BUILTIN;
 long previousMillis = 0;
@@ -18,19 +23,30 @@ void setup() {
     Serial.println("Starting BLE failed!");
     while (1);
   }
+  if (!HTS.begin()) {
+    Serial.println("Failed to initialize humidity temperature sensor!");
+    while (1);
+  }
 
-  BLE.setLocalName("Pametna Saksija");  // Set a name for the BLE device
-  BLE.setAdvertisedService(newService);
+    // set advertised local name and service UUID:
+  BLE.setLocalName("Health");
+  BLE.setAdvertisedService(ledService);
+  BLE.setAdvertisedService(sensorService);
 
-  newService.addCharacteristic(switchChar);
-  newService.addCharacteristic(randomReading);
+  // add the characteristic to the service
+  ledService.addCharacteristic(switchCharacteristic);
+  sensorService.addCharacteristic(temperatureCharacteristic);
+  sensorService.addCharacteristic(humidityCharacteristic);
 
-  BLE.addService(newService);
+  // add service
+  BLE.addService(ledService);
+  BLE.addService(sensorService);
 
-  switchChar.writeValue(0);
-  randomReading.writeValue(0);
+  // set the initial value for the characeristic:
+  switchCharacteristic.writeValue(0);
 
-  BLE.advertise();  // Start advertising
+  // start advertising
+  BLE.advertise();
   Serial.println("Bluetooth device active, waiting for connections...");
 }
 
@@ -48,11 +64,11 @@ void loop() {
       if (currentMillis - previousMillis >= 200) {
         previousMillis = currentMillis;
 
-        int randomValue = analogRead(A1);
-        randomReading.writeValue(randomValue);
+        temperatureCharacteristic.writeValue(HTS.readTemperature());
+        humidityCharacteristic.writeValue(HTS.readHumidity());
 
-        if (switchChar.written()) {
-          if (switchChar.value()) {
+        if (switchCharacteristic.written()) {
+          if (switchCharacteristic.value()) {
             Serial.println("LED on");
             digitalWrite(ledPin, HIGH);
           } else {
