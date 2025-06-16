@@ -85,9 +85,10 @@ Preporučene aplikacije:
 
 ## 📁 Struktura projekta
 
+```
 Pametna-Saksija/
 │
 ├── peripheral/
 │ └── peripheral.ino // Glavni BLE kod (već učitan na Arduino)
-├── README.md // Ovaj dokument
-└── docs/ // (opcionalno) dodatna dokumentacija
+├── README.md 
+```
