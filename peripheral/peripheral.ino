@@ -1,98 +1,152 @@
 #include <ArduinoBLE.h>
 #include <Arduino_HTS221.h>
+#include <Crypto.h>
+#include <SHA256.h>
 
-const char *passkey = "123456";
+// BLE konfiguracija
+const char *correctPasskey = "123456";
 bool authenticated = false;
+int authAttempts = 0;
+const int maxAuthAttempts = 3;
 
+// BLE servisi i karakteristike
 BLEService sensorService("5a005939-6dad-4166-9531-2d8d363a462c");
 BLEService authService("9964e111-9289-4507-b935-c321bea0afbe");
 
-// Bluetooth® Low Energy LED Switch Characteristic - custom 128-bit UUID, read and writable by central
 BLEStringCharacteristic temperatureCharacteristic("91a0b53d-0624-4b15-b388-59afcf03f233", BLERead, 8);
 BLEStringCharacteristic humidityCharacteristic("89c028a0-d1bf-4f8f-97d6-3fa8c77fdcf7", BLERead, 8);
-BLEStringCharacteristic passkeyCharacteristic("30ead979-dd63-4fe5-a2ca-e76ae9ce0c9c", BLEWrite, 8);
+BLEStringCharacteristic passkeyCharacteristic("30ead979-dd63-4fe5-a2ca-e76ae9ce0c9c", BLEWrite, 64);
 
+// LED i treptanje
 const int ledPin = LED_BUILTIN;
+bool ledState = false;
+bool shouldBlink = false;
+unsigned long ledPreviousMillis = 0;
+const unsigned long ledInterval = 1000; // 1s
+
+// hash funkcija
+String getHash(const String& input) {
+  SHA256 hasher;
+  hasher.reset();
+  hasher.update(input.c_str(), input.length());
+  byte hash[32];
+  hasher.finalize(hash, sizeof(hash));
+  String result = "";
+  for (int i = 0; i < 4; i++) {
+    result += String(hash[i], HEX);
+  }
+  return result;
+}
+
+String correctHash = getHash(correctPasskey);
+
 long previousMillis = 0;
 
 void setup() {
-  Serial.begin(9600);  // initialize serial communication
+  Serial.begin(9600);
   while (!Serial);
 
-  pinMode(ledPin, OUTPUT);       // initialize the LED pin
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
 
-  // Initialize ArduinoBLE library
   if (!BLE.begin()) {
-    Serial.println("Starting BLE failed!");
-    while (1);
-  }
-  if (!HTS.begin()) {
-    Serial.println("Failed to initialize humidity temperature sensor!");
+    Serial.println("BLE init failed!");
     while (1);
   }
 
-    // set advertised local name and service UUID:
+  if (!HTS.begin()) {
+    Serial.println("Sensor init failed!");
+    while (1);
+  }
+
   BLE.setLocalName("Health");
   BLE.setAdvertisedService(sensorService);
   BLE.setAdvertisedService(authService);
 
-  // add the characteristic to the service
   sensorService.addCharacteristic(temperatureCharacteristic);
   sensorService.addCharacteristic(humidityCharacteristic);
   authService.addCharacteristic(passkeyCharacteristic);
 
-  // add service
   BLE.addService(sensorService);
   BLE.addService(authService);
 
-  // set the initial value for the characeristic:
   passkeyCharacteristic.writeValue("");
-  digitalWrite(ledPin, LOW);
 
-  // start advertising
   BLE.advertise();
-  Serial.println("Bluetooth device active, waiting for connections...");
+  Serial.println("BLE device active. Waiting for connection...");
 }
 
 void loop() {
-  BLEDevice central = BLE.central();  // Wait for a central to connect
+  BLEDevice central = BLE.central();
 
   if (central) {
     Serial.print("Connected to central: ");
     Serial.println(central.address());
 
+    authAttempts = 0;
+    authenticated = false;
+    shouldBlink = true;
+    ledPreviousMillis = millis();
+
     while (central.connected()) {
-      if (passkeyCharacteristic.written()){
-        if (passkeyCharacteristic.value() == passkey) {
-          authenticated = true;
-          Serial.println("Authenticated!");
-        } else {
-          authenticated = false;
-          Serial.println("Authentication failed!");
+
+      // TREPTANJE LED ako nije autentifikovan
+      if (!authenticated && shouldBlink) {
+        unsigned long now = millis();
+        if (now - ledPreviousMillis >= ledInterval) {
+          ledPreviousMillis = now;
+          ledState = !ledState;
+          digitalWrite(ledPin, ledState);
         }
       }
 
+      // Provjera passkey-a
+      if (passkeyCharacteristic.written()) {
+        String inputHash = getHash(passkeyCharacteristic.value());
+
+        if (inputHash == correctHash) {
+          authenticated = true;
+          authAttempts = 0;
+          shouldBlink = false;
+          digitalWrite(ledPin, HIGH);
+          Serial.println("✅ Auth success!");
+        } else {
+          authAttempts++;
+          Serial.print("❌ Auth failed! Attempt ");
+          Serial.println(authAttempts);
+
+          if (authAttempts >= maxAuthAttempts) {
+            shouldBlink = false;
+            digitalWrite(ledPin, LOW);
+            Serial.println("⛔ Too many attempts. Disconnecting...");
+            central.disconnect();
+            break;
+          }
+        }
+      }
+
+      // Slanje podataka
       long currentMillis = millis();
       if (currentMillis - previousMillis >= 200) {
         previousMillis = currentMillis;
 
-        if(authenticated){
+        if (authenticated) {
           temperatureCharacteristic.writeValue(String(HTS.readTemperature()));
           humidityCharacteristic.writeValue(String(HTS.readHumidity()));
-          digitalWrite(ledPin, HIGH);
         } else {
-          digitalWrite(ledPin, LOW);
           temperatureCharacteristic.writeValue("No Value");
           humidityCharacteristic.writeValue("No Value");
-          Serial.println("Access to sensor data is blocked");
+          Serial.println("🔒 Access denied.");
         }
       }
     }
+
+    // Nakon diskonekcije
     authenticated = false;
+    authAttempts = 0;
+    shouldBlink = false;
     digitalWrite(ledPin, LOW);
     Serial.print("Disconnected from central: ");
     Serial.println(central.address());
   }
-
-  //BLE.poll();  // Keep BLE stack running when no central is connected
 }
