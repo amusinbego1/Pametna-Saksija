@@ -16,6 +16,7 @@ BLEService authService("9964e111-9289-4507-b935-c321bea0afbe");
 BLEStringCharacteristic temperatureCharacteristic("91a0b53d-0624-4b15-b388-59afcf03f233", BLERead, 8);
 BLEStringCharacteristic humidityCharacteristic("89c028a0-d1bf-4f8f-97d6-3fa8c77fdcf7", BLERead, 8);
 BLEStringCharacteristic passkeyCharacteristic("30ead979-dd63-4fe5-a2ca-e76ae9ce0c9c", BLEWrite, 64);
+BLEStringCharacteristic jsonCharacteristic("6fddf51b-4e44-4ff6-bc27-13462d5cdb0b", BLERead, 64);  // 🔹 Nova karakteristika
 
 // LED i treptanje
 const int ledPin = LED_BUILTIN;
@@ -65,6 +66,7 @@ void setup() {
 
   sensorService.addCharacteristic(temperatureCharacteristic);
   sensorService.addCharacteristic(humidityCharacteristic);
+  sensorService.addCharacteristic(jsonCharacteristic); // 🔹 Dodana JSON karakteristika
   authService.addCharacteristic(passkeyCharacteristic);
 
   BLE.addService(sensorService);
@@ -131,11 +133,19 @@ void loop() {
         previousMillis = currentMillis;
 
         if (authenticated) {
-          temperatureCharacteristic.writeValue(String(HTS.readTemperature()));
-          humidityCharacteristic.writeValue(String(HTS.readHumidity()));
+          float temp = HTS.readTemperature();
+          float hum = HTS.readHumidity();
+
+          temperatureCharacteristic.writeValue(String(temp));
+          humidityCharacteristic.writeValue(String(hum));
+
+          // 🔹 JSON karakteristika
+          String json = "{\"temperature\": " + String(temp, 1) + ", \"humidity\": " + String(hum, 1) + "}";
+          jsonCharacteristic.writeValue(json);
         } else {
           temperatureCharacteristic.writeValue("No Value");
           humidityCharacteristic.writeValue("No Value");
+          jsonCharacteristic.writeValue("{}");
           Serial.println("🔒 Access denied.");
         }
       }
