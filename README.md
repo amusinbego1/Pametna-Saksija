@@ -43,7 +43,7 @@ Uređaj koristi **Arduino Nano 33 BLE Sense**, koji se može napajati na više n
 
 | Servis         | UUID                                  | Karakteristike                             |
 |----------------|---------------------------------------|--------------------------------------------|
-| `sensorService`| `5a005939-6dad-4166-9531-2d8d363a462c`| - `temperatureCharacteristic` (read) <br> - `humidityCharacteristic` (read) <br> - jsonCharacteristic (read) |
+| `sensorService`| `5a005939-6dad-4166-9531-2d8d363a462c`| - `temperatureCharacteristic` (read) <br> - `humidityCharacteristic` (read) <br> - `jsonCharacteristic` (read) |
 | `authService`  | `9964e111-9289-4507-b935-c321bea0afbe`| - `passkeyCharacteristic` (write) – unos šifre |
 
 ---
@@ -65,6 +65,7 @@ BLE karakteristika `jsonCharacteristic` vraća podatke u JSON formatu:
 
 ```json
 {"temperature": 24.5, "humidity": 52.3}
+```
 
 ### Postupak:
 1. Poveži se na uređaj **Health** putem BLE aplikacije
