@@ -16,14 +16,14 @@ BLEService authService("9964e111-9289-4507-b935-c321bea0afbe");
 BLEStringCharacteristic temperatureCharacteristic("91a0b53d-0624-4b15-b388-59afcf03f233", BLERead, 8);
 BLEStringCharacteristic humidityCharacteristic("89c028a0-d1bf-4f8f-97d6-3fa8c77fdcf7", BLERead, 8);
 BLEStringCharacteristic passkeyCharacteristic("30ead979-dd63-4fe5-a2ca-e76ae9ce0c9c", BLEWrite, 64);
-BLEStringCharacteristic jsonCharacteristic("6fddf51b-4e44-4ff6-bc27-13462d5cdb0b", BLERead, 64); 
+BLEStringCharacteristic jsonCharacteristic("6fddf51b-4e44-4ff6-bc27-13462d5cdb0b", BLERead, 64);
 
 // LED i treptanje
 const int ledPin = LED_BUILTIN;
 bool ledState = false;
 bool shouldBlink = false;
 unsigned long ledPreviousMillis = 0;
-const unsigned long ledInterval = 500; 
+const unsigned long ledInterval = 500;
 
 // hash funkcija
 String getHash(const String& input) {
@@ -41,7 +41,10 @@ String getHash(const String& input) {
 
 String correctHash = getHash(correctPasskey);
 
-long previousMillis = 0;
+void onTemperatureRead(BLEDevice central, BLECharacteristic characteristic);
+void onHumidityRead(BLEDevice central, BLECharacteristic characteristic);
+void onJSONRead(BLEDevice central, BLECharacteristic characteristic);
+void onPasskeyWritten(BLEDevice central, BLECharacteristic characteristic);
 
 void setup() {
   Serial.begin(9600);
@@ -65,25 +68,31 @@ void setup() {
   BLEDescriptor jsonDesc("2901", "JSON");
   BLEDescriptor passDesc("2901", "Šifra");
 
-
   BLE.setLocalName("Health");
   BLE.setAdvertisedService(sensorService);
   BLE.setAdvertisedService(authService);
-
-  sensorService.addCharacteristic(temperatureCharacteristic);
-  sensorService.addCharacteristic(humidityCharacteristic);
-  sensorService.addCharacteristic(jsonCharacteristic); 
-  authService.addCharacteristic(passkeyCharacteristic);
 
   temperatureCharacteristic.addDescriptor(tempDesc);
   humidityCharacteristic.addDescriptor(humDesc);
   jsonCharacteristic.addDescriptor(jsonDesc);
   passkeyCharacteristic.addDescriptor(passDesc);
 
+  temperatureCharacteristic.setEventHandler(BLERead, onTemperatureRead);
+  humidityCharacteristic.setEventHandler(BLERead, onHumidityRead);
+  jsonCharacteristic.setEventHandler(BLERead, onJSONRead);
+  passkeyCharacteristic.setEventHandler(BLEWritten, onPasskeyWritten);
+
+  sensorService.addCharacteristic(temperatureCharacteristic);
+  sensorService.addCharacteristic(humidityCharacteristic);
+  sensorService.addCharacteristic(jsonCharacteristic);
+  authService.addCharacteristic(passkeyCharacteristic);
 
   BLE.addService(sensorService);
   BLE.addService(authService);
 
+  temperatureCharacteristic.writeValue("No Value");
+  humidityCharacteristic.writeValue("No Value");
+  jsonCharacteristic.writeValue("{}");
   passkeyCharacteristic.writeValue("");
 
   BLE.advertise();
@@ -97,68 +106,20 @@ void loop() {
     Serial.print("Connected to central: ");
     Serial.println(central.address());
 
-    authAttempts = 0;
     authenticated = false;
+    authAttempts = 0;
     shouldBlink = true;
     ledPreviousMillis = millis();
 
     while (central.connected()) {
+      BLE.poll();
 
-      // TREPTANJE LED ako nije autentifikovan
       if (!authenticated && shouldBlink) {
         unsigned long now = millis();
         if (now - ledPreviousMillis >= ledInterval) {
           ledPreviousMillis = now;
           ledState = !ledState;
           digitalWrite(ledPin, ledState);
-        }
-      }
-
-      // Provjera passkey-a
-      if (passkeyCharacteristic.written()) {
-        String inputHash = getHash(passkeyCharacteristic.value());
-
-        if (inputHash == correctHash) {
-          authenticated = true;
-          authAttempts = 0;
-          shouldBlink = false;
-          digitalWrite(ledPin, HIGH);
-          Serial.println("Auth success!");
-        } else {
-          authAttempts++;
-          Serial.print("Auth failed! Attempt ");
-          Serial.println(authAttempts);
-
-          if (authAttempts >= maxAuthAttempts) {
-            shouldBlink = false;
-            digitalWrite(ledPin, LOW);
-            Serial.println("Too many attempts. Disconnecting...");
-            central.disconnect();
-            break;
-          }
-        }
-      }
-
-      // Slanje podataka
-      long currentMillis = millis();
-      if (currentMillis - previousMillis >= 200) {
-        previousMillis = currentMillis;
-
-        if (authenticated) {
-          float temp = HTS.readTemperature();
-          float hum = HTS.readHumidity();
-
-          temperatureCharacteristic.writeValue(String(temp));
-          humidityCharacteristic.writeValue(String(hum));
-
-          // JSON karakteristika
-          String json = "{\"temperature\": " + String(temp, 1) + ", \"humidity\": " + String(hum, 1) + "}";
-          jsonCharacteristic.writeValue(json);
-        } else {
-          temperatureCharacteristic.writeValue("No Value");
-          humidityCharacteristic.writeValue("No Value");
-          jsonCharacteristic.writeValue("{}");
-          Serial.println("Access denied.");
         }
       }
     }
@@ -170,5 +131,57 @@ void loop() {
     digitalWrite(ledPin, LOW);
     Serial.print("Disconnected from central: ");
     Serial.println(central.address());
+  }
+}
+
+void onTemperatureRead(BLEDevice central, BLECharacteristic characteristic) {
+  if (authenticated) {
+    float temp = HTS.readTemperature();
+    characteristic.writeValue(String(temp).c_str());
+  } else {
+    characteristic.writeValue("No Value");
+  }
+}
+
+void onHumidityRead(BLEDevice central, BLECharacteristic characteristic) {
+  if (authenticated) {
+    float hum = HTS.readHumidity();
+    characteristic.writeValue(String(hum).c_str());
+  } else {
+    characteristic.writeValue("No Value");
+  }
+}
+
+void onJSONRead(BLEDevice central, BLECharacteristic characteristic) {
+  if (authenticated) {
+    float temp = HTS.readTemperature();
+    float hum = HTS.readHumidity();
+    String json = "{\"temperature\": " + String(temp, 1) + ", \"humidity\": " + String(hum, 1) + "}";
+    characteristic.writeValue(json.c_str());
+  } else {
+    characteristic.writeValue("{}");
+  }
+}
+
+void onPasskeyWritten(BLEDevice central, BLECharacteristic characteristic) {
+  String inputHash = getHash(passkeyCharacteristic.value());
+
+  if (inputHash == correctHash) {
+    authenticated = true;
+    authAttempts = 0;
+    shouldBlink = false;
+    digitalWrite(ledPin, HIGH);
+    Serial.println("Auth success!");
+  } else {
+    authAttempts++;
+    Serial.print("Auth failed! Attempt ");
+    Serial.println(authAttempts);
+
+    if (authAttempts >= maxAuthAttempts) {
+      shouldBlink = false;
+      digitalWrite(ledPin, LOW);
+      Serial.println("Too many attempts. Disconnecting...");
+      BLE.disconnect();
+    }
   }
 }
