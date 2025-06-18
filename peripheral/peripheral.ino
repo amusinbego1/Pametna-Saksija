@@ -25,7 +25,7 @@ bool shouldBlink = false;
 unsigned long ledPreviousMillis = 0;
 const unsigned long ledInterval = 500;
 
-// hash funkcija
+// Funkcija za hashiranje
 String getHash(const String& input) {
   SHA256 hasher;
   hasher.reset();
@@ -41,6 +41,16 @@ String getHash(const String& input) {
 
 String correctHash = getHash(correctPasskey);
 
+// Padding funkcija
+String padToLength(const String& input, int totalLength) {
+  String padded = input;
+  while (padded.length() < totalLength) {
+    padded += ' ';
+  }
+  return padded;
+}
+
+// Deklaracije handlera
 void onTemperatureRead(BLEDevice central, BLECharacteristic characteristic);
 void onHumidityRead(BLEDevice central, BLECharacteristic characteristic);
 void onJSONRead(BLEDevice central, BLECharacteristic characteristic);
@@ -90,9 +100,9 @@ void setup() {
   BLE.addService(sensorService);
   BLE.addService(authService);
 
-  temperatureCharacteristic.writeValue("No Value");
-  humidityCharacteristic.writeValue("No Value");
-  jsonCharacteristic.writeValue("{}");
+  temperatureCharacteristic.writeValue(padToLength("No Value", 8).c_str());
+  humidityCharacteristic.writeValue(padToLength("No Value", 8).c_str());
+  jsonCharacteristic.writeValue(padToLength("{}", 64).c_str());
   passkeyCharacteristic.writeValue("");
 
   BLE.advertise();
@@ -137,18 +147,20 @@ void loop() {
 void onTemperatureRead(BLEDevice central, BLECharacteristic characteristic) {
   if (authenticated) {
     float temp = HTS.readTemperature();
-    characteristic.writeValue(String(temp).c_str());
+    String padded = padToLength(String(temp, 2), 8);
+    characteristic.writeValue(padded.c_str());
   } else {
-    characteristic.writeValue("No Value");
+    characteristic.writeValue(padToLength("No Value", 8).c_str());
   }
 }
 
 void onHumidityRead(BLEDevice central, BLECharacteristic characteristic) {
   if (authenticated) {
     float hum = HTS.readHumidity();
-    characteristic.writeValue(String(hum).c_str());
+    String padded = padToLength(String(hum, 2), 8);
+    characteristic.writeValue(padded.c_str());
   } else {
-    characteristic.writeValue("No Value");
+    characteristic.writeValue(padToLength("No Value", 8).c_str());
   }
 }
 
@@ -157,9 +169,10 @@ void onJSONRead(BLEDevice central, BLECharacteristic characteristic) {
     float temp = HTS.readTemperature();
     float hum = HTS.readHumidity();
     String json = "{\"temperature\": " + String(temp, 1) + ", \"humidity\": " + String(hum, 1) + "}";
+    json = padToLength(json, 64);
     characteristic.writeValue(json.c_str());
   } else {
-    characteristic.writeValue("{}");
+    characteristic.writeValue(padToLength("{}", 64).c_str());
   }
 }
 
