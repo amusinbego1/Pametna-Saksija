@@ -16,14 +16,14 @@ BLEService authService("9964e111-9289-4507-b935-c321bea0afbe");
 BLEStringCharacteristic temperatureCharacteristic("91a0b53d-0624-4b15-b388-59afcf03f233", BLERead, 8);
 BLEStringCharacteristic humidityCharacteristic("89c028a0-d1bf-4f8f-97d6-3fa8c77fdcf7", BLERead, 8);
 BLEStringCharacteristic passkeyCharacteristic("30ead979-dd63-4fe5-a2ca-e76ae9ce0c9c", BLEWrite, 64);
-BLEStringCharacteristic jsonCharacteristic("6fddf51b-4e44-4ff6-bc27-13462d5cdb0b", BLERead, 64);  // 🔹 Nova karakteristika
+BLEStringCharacteristic jsonCharacteristic("6fddf51b-4e44-4ff6-bc27-13462d5cdb0b", BLERead, 64); 
 
 // LED i treptanje
 const int ledPin = LED_BUILTIN;
 bool ledState = false;
 bool shouldBlink = false;
 unsigned long ledPreviousMillis = 0;
-const unsigned long ledInterval = 1000; // 1s
+const unsigned long ledInterval = 500; 
 
 // hash funkcija
 String getHash(const String& input) {
@@ -60,14 +60,26 @@ void setup() {
     while (1);
   }
 
+  BLEDescriptor tempDesc("2901", "Temperatura");
+  BLEDescriptor humDesc("2901", "Vlažnost");
+  BLEDescriptor jsonDesc("2901", "JSON");
+  BLEDescriptor passDesc("2901", "Šifra");
+
+
   BLE.setLocalName("Health");
   BLE.setAdvertisedService(sensorService);
   BLE.setAdvertisedService(authService);
 
   sensorService.addCharacteristic(temperatureCharacteristic);
   sensorService.addCharacteristic(humidityCharacteristic);
-  sensorService.addCharacteristic(jsonCharacteristic); // 🔹 Dodana JSON karakteristika
+  sensorService.addCharacteristic(jsonCharacteristic); 
   authService.addCharacteristic(passkeyCharacteristic);
+
+  temperatureCharacteristic.addDescriptor(tempDesc);
+  humidityCharacteristic.addDescriptor(humDesc);
+  jsonCharacteristic.addDescriptor(jsonDesc);
+  passkeyCharacteristic.addDescriptor(passDesc);
+
 
   BLE.addService(sensorService);
   BLE.addService(authService);
@@ -111,16 +123,16 @@ void loop() {
           authAttempts = 0;
           shouldBlink = false;
           digitalWrite(ledPin, HIGH);
-          Serial.println("✅ Auth success!");
+          Serial.println("Auth success!");
         } else {
           authAttempts++;
-          Serial.print("❌ Auth failed! Attempt ");
+          Serial.print("Auth failed! Attempt ");
           Serial.println(authAttempts);
 
           if (authAttempts >= maxAuthAttempts) {
             shouldBlink = false;
             digitalWrite(ledPin, LOW);
-            Serial.println("⛔ Too many attempts. Disconnecting...");
+            Serial.println("Too many attempts. Disconnecting...");
             central.disconnect();
             break;
           }
@@ -139,14 +151,14 @@ void loop() {
           temperatureCharacteristic.writeValue(String(temp));
           humidityCharacteristic.writeValue(String(hum));
 
-          // 🔹 JSON karakteristika
+          // JSON karakteristika
           String json = "{\"temperature\": " + String(temp, 1) + ", \"humidity\": " + String(hum, 1) + "}";
           jsonCharacteristic.writeValue(json);
         } else {
           temperatureCharacteristic.writeValue("No Value");
           humidityCharacteristic.writeValue("No Value");
           jsonCharacteristic.writeValue("{}");
-          Serial.println("🔒 Access denied.");
+          Serial.println("Access denied.");
         }
       }
     }
